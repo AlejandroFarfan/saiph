@@ -1,97 +1,80 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "RBA-CloudFormation",
     "Resources": {
-        "ApiGatewayRestApi": {
-            "Type": "AWS::ApiGateway::RestApi",
+        "Api": {
+            "Type": "AWS::ApiGatewayV2::Api",
             "Properties": {
                 "Name": {
-                    "Fn::Join": [
-                        "",
-                        [
-                            {
-                                "Ref": "AWS::StackName"
-                            },
-                            "-api"
-                        ]
-                    ]
-                }
+                    "Ref": "AWS::StackName"
+                },
+                "ProtocolType": "WEBSOCKET",
+                "RouteSelectionExpression": "\\$default"
             }
         },
-        "ApiGatewayPostMethod": {
-            "Type": "AWS::ApiGateway::Method",
+        "DefaultRoute": {
+            "Type": "AWS::ApiGatewayV2::Route",
             "Properties": {
-                "ApiKeyRequired": true,
+                "ApiId": {
+                    "Ref": "Api"
+                },
                 "AuthorizationType": "NONE",
-                "HttpMethod": "POST",
-                "Integration": {
-                    "Type": "AWS",
-                    "Credentials": {
-                        "Fn::GetAtt": [
-                            "GatewayRole",
-                            "Arn"
-                        ]
-                    },
-                    "Uri": {
-                        "Fn::Join": [
-                            "",
-                            [
-                                "arn:aws:apigateway:",
-                                {
-                                    "Ref": "AWS::Region"
-                                },
-                                ":kinesis:action/PutRecord"
-                            ]
-                        ]
-                    },
-                    "IntegrationHttpMethod": "POST",
-                    "RequestTemplates": {
-                        "application/json": {
-                            "Fn::Join": [
-                                "",
-                                [
-                                    "#set($payload = $input.json('$'))\n",
-									"#set($data = \"{\"\"payload\"\": $payload, \"\"connectionId\"\": \"\"$context.connectionId\"\"}\")\n{\n    \"Data\": \"$util.base64Encode($data)\",\n    \"PartitionKey\": \"$context.connectionId\",\n    \"StreamName\": \"${EventStream}\"\n}\n",
-                                    "{\n",
-                                    "\"DeliveryStreamName\": \"",
-                                    {
-                                        "Ref": "EventStream"
-                                    },
-                                    "\",\n",
-                                    " \"Record\": { \"Data\": \"$b64\" }\n}"
-                                ]
-                            ]
-                        }
-                    },
-                    "RequestParameters": {
-                        "integration.request.header.Content-Type": "'application/x-amz-json-1.1'"
-                    },
-                    "IntegrationResponses": [
-                        {
-                            "StatusCode": 200,
-                            "ResponseTemplates": {
-                                "application/json": "{\"status\":\"OK\"}"
-                            }
-                        }
-                    ]
-                },
-                "MethodResponses": [
-                    {
-                        "StatusCode": 200
-                    }
-                ],
-                "ResourceId": {
-                    "Fn::GetAtt": [
-                        "ApiGatewayRestApi",
-                        "RootResourceId"
-                    ]
-                },
-                "RestApiId": {
-                    "Ref": "ApiGatewayRestApi"
+                "RouteKey": "$default",
+                "Target": {
+                    "Fn::Sub": "integrations/${KinesisIntegration}"
                 }
             }
         },
-        "GatewayRole": {
+        "Stage": {
+            "Type": "AWS::ApiGatewayV2::Stage",
+            "Properties": {
+                "ApiId": {
+                    "Ref": "Api"
+                },
+                "DeploymentId": {
+                    "Ref": "Deployment"
+                },
+                "StageName": "v1",
+                "DefaultRouteSettings": {
+                    "LoggingLevel": "INFO",
+                    "DataTraceEnabled": true
+                }
+            }
+        },
+        "Deployment": {
+            "Type": "AWS::ApiGatewayV2::Deployment",
+            "DependsOn": "DefaultRoute",
+            "Properties": {
+                "ApiId": {
+                    "Ref": "Api"
+                }
+            }
+        },
+        "KinesisIntegration": {
+            "Type": "AWS::ApiGatewayV2::Integration",
+            "Properties": {
+                "ApiId": {
+                    "Ref": "Api"
+                },
+                "CredentialsArn": {
+                    "Fn::GetAtt": [
+                        "IntegrationRole",
+                        "Arn"
+                    ]
+                },
+                "IntegrationMethod": "POST",
+                "IntegrationType": "AWS",
+                "IntegrationUri": {
+                    "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:kinesis:action/PutRecord"
+                },
+                "RequestTemplates": {
+                    "default": {
+                        "Fn::Sub": "#set($payload = $input.json('$'))\n#set($data = \"{\"\"payload\"\": $payload, \"\"connectionId\"\": \"\"$context.connectionId\"\"}\")\n{\n    \"Data\": \"$util.base64Encode($data)\",\n    \"PartitionKey\": \"$context.connectionId\",\n    \"StreamName\": \"${EventStream}\"\n}\n"
+                    }
+                },
+                "TemplateSelectionExpression": "default"
+            }
+        },
+        "IntegrationRole": {
             "Type": "AWS::IAM::Role",
             "Properties": {
                 "AssumeRolePolicyDocument": {
@@ -110,47 +93,35 @@
                         }
                     ]
                 },
-                "Path": "/",
                 "Policies": [
                     {
-                        "PolicyName": "GatewayRolePolicy",
+                        "PolicyName": "logs",
                         "PolicyDocument": {
                             "Version": "2012-10-17",
                             "Statement": [
-								{
-								"Effect": "Allow",
-								"Action": "kinesis:PutRecord",
-								"Resource": {
-									"Fn::GetAtt": [
-										"EventStream",
-										"Arn"
-										]
-									}
-								}
-							]	
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "kinesis:PutRecord",
+                                    "Resource": {
+                                        "Fn::GetAtt": [
+                                            "EventStream",
+                                            "Arn"
+                                        ]
+                                    }
+                                }
+                            ]
                         }
                     }
                 ]
             }
         },
-        "ApiGatewayDeployment": {
-            "Type": "AWS::ApiGateway::Deployment",
-            "DependsOn": [
-                "ApiGatewayPostMethod"
-            ],
+        "EventStream": {
+            "Type": "AWS::Kinesis::Stream",
             "Properties": {
-                "RestApiId": {
-                    "Ref": "ApiGatewayRestApi"
-                }
+                "ShardCount": 1
             }
         },
-		"EventStream": {
-			"Type": "AWS::Kinesis::Stream",
-			"Properties": {
-				"ShardCount": 1
-			}
-		},
-		"EventStreamConsumer": {
+        "EventStreamConsumer": {
             "Type": "AWS::Kinesis::StreamConsumer",
             "Properties": {
                 "ConsumerName": "lambda",
@@ -162,7 +133,7 @@
                 }
             }
         },
-		"EventSourceMapping": {
+        "EventSourceMapping": {
             "Type": "AWS::Lambda::EventSourceMapping",
             "Properties": {
                 "BatchSize": 16,
@@ -177,22 +148,6 @@
                     ]
                 },
                 "StartingPosition": "LATEST"
-            }
-        },
-		"Stage": {
-            "Type": "AWS::ApiGateway::Stage",
-            "Properties": {
-                "ApiId": {
-                    "Ref": "ApiGatewayRestApi"
-                },
-                "DeploymentId": {
-                    "Ref": "ApiGatewayDeployment"
-                },
-                "StageName": "v1",
-                "DefaultRouteSettings": {
-                    "LoggingLevel": "INFO",
-                    "DataTraceEnabled": true
-                }
             }
         },
         "StreamFunction": {
@@ -215,7 +170,7 @@
                 },
                 "Code": {
                     "ZipFile": {
-                        "Fn::Sub": "'use strict';\n\nconst AWS = require('aws-sdk');\nconst api = new AWS.ApiGatewayManagementApi({\n  apiVersion: '2018-11-29',\n  endpoint: '${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}'\n});\nexports.handler = async (event) => {\n  console.log(JSON.stringify(event));\n  for (let r in event.Records) {\n      const data = JSON.parse(new Buffer(event.Records[r].kinesis.data, 'base64').toString());\n      try {\n        await api.postToConnection({\n          ConnectionId: data.connectionId,\n          Data: JSON.stringify(data.payload)\n        }).promise();\n      } catch (e) {\n        if (e.statusCode === 410) {\n          // do nothing, client disconnected\n          console.log('client disconnected');\n        } else {\n          throw e;\n        }\n      }    \n  }\n  return \"OK\";\n};\n"
+                        "Fn::Sub": "'use strict';\n\nconst AWS = require('aws-sdk');\nconst api = new AWS.ApiGatewayManagementApi({\n  apiVersion: '2018-11-29',\n  endpoint: '${Api}.execute-api.${AWS::Region}.amazonaws.com/${Stage}'\n});\nexports.handler = async (event) => {\n  console.log(JSON.stringify(event));\n  for (let r in event.Records) {\n      const data = JSON.parse(new Buffer(event.Records[r].kinesis.data, 'base64').toString());\n      try {\n        await api.postToConnection({\n          ConnectionId: data.connectionId,\n          Data: JSON.stringify(data.payload)\n        }).promise();\n      } catch (e) {\n        if (e.statusCode === 410) {\n          // do nothing, client disconnected\n          console.log('client disconnected');\n        } else {\n          throw e;\n        }\n      }    \n  }\n  return \"OK\";\n};\n"
                     }
                 }
             }
@@ -244,7 +199,7 @@
                                     "Effect": "Allow",
                                     "Action": "execute-api:ManageConnections",
                                     "Resource": {
-                                        "Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/${Stage}/POST/@connections/*"
+                                        "Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/${Stage}/POST/@connections/*"
                                     }
                                 },
                                 {
@@ -297,6 +252,22 @@
                         }
                     }
                 ]
+            }
+        },
+        "StreamLogGroup": {
+            "Type": "AWS::Logs::LogGroup",
+            "Properties": {
+                "LogGroupName": {
+                    "Fn::Sub": "/aws/lambda/${StreamFunction}"
+                },
+                "RetentionInDays": 14
+            }
+        }
+    },
+    "Outputs": {
+        "WebSocketURI": {
+            "Value": {
+                "Fn::Sub": "wss://${Api}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
             }
         }
     }
