@@ -9,6 +9,21 @@
         "RouteSelectionExpression": "\\$default"
       }
     },
+	"ApiGatewayResource": {
+        "Type": "AWS::ApiGateway::Resource",
+        "Properties": {
+            "ParentId": {
+                "Fn::GetAtt": [
+                    "Api",
+                    "RootResourceId"
+                ]
+            },
+            "PathPart": "mock",
+            "RestApiId": {
+                "Ref": "Api"
+            }
+        }
+    },
 	"ApiGatewayMethod": {
         "Type": "AWS::ApiGateway::Method",
         "Properties": {
@@ -34,10 +49,15 @@
                     }
                 ],
                 "PassthroughBehavior": "WHEN_NO_TEMPLATES",
-                "RequestTemplates": {
-                    "application/json": "{\"statusCode\": $input.json('$.statusCode'), \"message\": $input.json('$.message')}"
-                },
+				"RequestTemplates": {
+				  "default": {
+					"Fn::Sub": "#set($payload = $input.json('$'))\n#set($data = \"{\"\"payload\"\": $payload, \"\"connectionId\"\": \"\"$context.connectionId\"\"}\")\n{\n    \"Data\": \"$util.base64Encode($data)\",\n    \"PartitionKey\": \"$context.connectionId\",\n    \"StreamName\": \"${EventStream}\"\n}\n"
+				  }
+				},
                 "Type": "AWS",
+				"uri": {
+				  "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:kinesis:action/PutRecord"
+				},
                 "TimeoutInMillis": 29000
             },
             "MethodResponses": [
@@ -63,11 +83,21 @@
                 "Ref": "ApiGatewayResource"
             },
             "RestApiId": {
-                "Ref": "ApiGatewayRestApi"
+                "Ref": "Api"
             }
         }
     },
-    "Stage": {
+    "ApiGatewayModel": {
+        "Type": "AWS::ApiGateway::Model",
+        "Properties": {
+            "ContentType": "application/json",
+            "RestApiId": {
+                "Ref": "Api"
+            },
+            "Schema": {}
+        }
+    },
+	"Stage": {
       "Type": "AWS::ApiGateway::Stage",
       "Properties": {
         "ApiId": {
@@ -85,38 +115,13 @@
     },
     "Deployment": {
       "Type": "AWS::ApiGateway::Deployment",
-      "DependsOn": "DefaultRoute",
+      "DependsOn": "ApiGatewayMethod",
       "Properties": {
         "ApiId": {
           "Ref": "Api"
         }
       }
-    },
-    "KinesisIntegration": {
-      "Type": "AWS::ApiGateway::Integration",
-      "Properties": {
-        "ApiId": {
-          "Ref": "Api"
-        },
-        "CredentialsArn": {
-          "Fn::GetAtt": [
-            "IntegrationRole",
-            "Arn"
-          ]
-        },
-        "IntegrationMethod": "POST",
-        "IntegrationType": "AWS",
-        "IntegrationUri": {
-          "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:kinesis:action/PutRecord"
-        },
-        "RequestTemplates": {
-          "default": {
-            "Fn::Sub": "#set($payload = $input.json('$'))\n#set($data = \"{\"\"payload\"\": $payload, \"\"connectionId\"\": \"\"$context.connectionId\"\"}\")\n{\n    \"Data\": \"$util.base64Encode($data)\",\n    \"PartitionKey\": \"$context.connectionId\",\n    \"StreamName\": \"${EventStream}\"\n}\n"
-          }
-        },
-        "TemplateSelectionExpression": "default"
-      }
-    },
+    },    
     "IntegrationRole": {
       "Type": "AWS::IAM::Role",
       "Properties": {
