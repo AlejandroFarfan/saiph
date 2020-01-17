@@ -72,7 +72,8 @@
                 "HttpMethod": "GET",
                 "RequestParameters": {
                     "method.request.querystring.message": false,
-                    "method.request.querystring.subject": false
+                    "method.request.querystring.subject": false,
+                    "method.request.querystring.topic": false
                 },
                 "Integration": {
                     "Type": "AWS",
@@ -96,12 +97,7 @@
                     },
                     "IntegrationHttpMethod": "GET",
                     "RequestParameters": {
-                        "integration.request.querystring.TopicArn": {
-							"Fn::GetAtt": [
-								"MySNSTopic",
-								"Arn"
-							]
-						},
+                        "integration.request.querystring.TopicArn": "method.request.querystring.topic",
                         "integration.request.querystring.Subject": "method.request.querystring.subject",
                         "integration.request.querystring.Message": "method.request.querystring.message"
                     },
@@ -141,96 +137,6 @@
                 },
                 "StageName": "prod"
             }
-        },
-		"MySNSTopic": {
-			"Type": "AWS::SNS::Topic",
-			"Properties": {
-			"Subscription": [{
-				"Endpoint": {
-					"Fn::GetAtt": ["MyQueue1", "Arn"]
-				},
-				"Protocol": "sqs"
-				},
-				{
-				"Endpoint": {
-					"Fn::GetAtt": ["MyQueue2", "Arn"]
-				},
-				"Protocol": "sqs"
-				}
-			]
-			}
-		},
-		"MyQueue1": {
-			"Type": "AWS::SQS::Queue"
-		},
-		"MyQueue2": {
-			"Type": "AWS::SQS::Queue"
-		},
-		"MyQueuePolicy": {
-			"Type": "AWS::SQS::QueuePolicy",
-			"Properties": {
-			"PolicyDocument": {
-				"Statement": [{
-				"Effect": "Allow",
-				"Principal": "*",
-				"Action": ["sqs:SendMessage"],
-				"Resource": "*",
-				"Condition": {
-					"ArnEquals": {
-					"aws:SourceArn": {
-						"Ref": "MySNSTopic"
-					}
-					}
-				}
-				}]
-			},
-			"Queues": [{
-				"Ref": "MyQueue1"
-			}, {
-				"Ref": "MyQueue2"
-			}]
-			}
-		}
-		},
-		"Outputs": {
-		"MySNSTopicTopicARN": {
-			"Value": {
-			"Ref": "MySNSTopic"
-			}
-		},
-		"MyQueue1Info": {
-			"Value": {
-			"Fn::Join": [
-				" ",
-				[
-				"ARN:",
-				{
-					"Fn::GetAtt": ["MyQueue1", "Arn"]
-				},
-				"URL:",
-				{
-					"Ref": "MyQueue1"
-				}
-				]
-			]
-			}
-		},
-		"MyQueue2Info": {
-			"Value": {
-			"Fn::Join": [
-				" ",
-				[
-				"ARN:",
-				{
-					"Fn::GetAtt": ["MyQueue2", "Arn"]
-				},
-				"URL:",
-				{
-					"Ref": "MyQueue2"
-				}
-				]
-			]
-			}
-		} 
-    }	
+        }
+    }
 }
