@@ -1,0 +1,139 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Collector bases on Kinesis + lambda",
+    "Resources": {
+		"EventStream": {
+			"Type": "AWS::Kinesis::Stream",
+			"Properties": {
+				"ShardCount": 1
+			}
+		},
+		"EventStreamConsumer": {
+            "Type": "AWS::Kinesis::StreamConsumer",
+            "Properties": {
+                "ConsumerName": "lambda",
+                "StreamARN": {
+                    "Fn::GetAtt": [
+                        "EventStream",
+                        "Arn"
+                    ]
+                }
+            }
+        },
+		"EventSourceMapping": {
+            "Type": "AWS::Lambda::EventSourceMapping",
+            "Properties": {
+                "BatchSize": 16,
+                "Enabled": true,
+                "EventSourceArn": {
+                    "Ref": "EventStreamConsumer"
+                },
+                "FunctionName": {
+                    "Fn::GetAtt": [
+                        "StreamFunction",
+                        "Arn"
+                    ]
+                },
+                "StartingPosition": "LATEST"
+            }
+        },
+		"StreamFunction": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Handler": "index.handler",
+                "Runtime": "nodejs12.x",
+                "MemorySize": 128,
+                "Timeout": 30,
+                "Role": {
+                    "Fn::GetAtt": [
+                        "StreamRole",
+                        "Arn"
+                    ]
+                },
+                "Code": {
+                    "S3Bucket": "rba-functions-container",
+					"S3Key": "RBAContextDataReceiver.zip"
+                }
+            }
+        },
+        "StreamRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "lambda.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "Policies": [
+                    {
+                        "PolicyName": "lambda",
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "kinesis:ListShards"
+                                    ],
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "kinesis:SubscribeToShard",
+                                        "kinesis:DescribeStreamSummary",
+                                        "kinesis:GetShardIterator",
+                                        "kinesis:GetRecords"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::GetAtt": [
+                                                "EventStream",
+                                                "Arn"
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "kinesis:SubscribeToShard"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::GetAtt": [
+                                                "EventStreamConsumer",
+                                                "ConsumerARN"
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "logs:CreateLogStream",
+                                        "logs:PutLogEvents"
+                                    ],
+                                    "Resource": "*"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        }
+	},
+	"Outputs": {
+		"EventStream": {
+			"Value": { 
+				"Ref" : "EventStream"
+			}
+		}
+	}
+}

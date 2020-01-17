@@ -1,0 +1,41 @@
+{
+   "AWSTemplateFormatVersion": "2010-09-09",
+   "Description": "RBA parent template",
+   "Resources": {
+		"CollectorStack": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": "https://rba-functions-container.s3.amazonaws.com/rba-stack/rba-collector.json",
+				"TimeoutInMinutes": "60"
+			}	
+		},		
+		"ApiStack": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": "https://rba-functions-container.s3.amazonaws.com/rba-stack/rba-apigateway.json",
+				"Parameters": {
+					"eventStreamer" : { "Fn::GetAtt" : [ "CollectorStack", "Outputs.EventStream" ] }
+				},
+				"TimeoutInMinutes": "60"
+			}	
+		},
+		"AnalyzerStack": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": "https://rba-functions-container.s3.amazonaws.com/rba-stack/rba-analyzer1.json",
+				"TimeoutInMinutes": "60"
+			}	
+		},		
+		"DatabaseStack": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": "https://rba-functions-container.s3.amazonaws.com/rba-stack/rba-dynamoDB.json",
+				"Parameters": {
+					"userTableName" : "scores-table" ,
+					"userIndexName" : "sesion-index" 
+				},
+				"TimeoutInMinutes": "60"
+			}
+		}
+    }
+}
